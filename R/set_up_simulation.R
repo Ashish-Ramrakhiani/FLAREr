@@ -1,3 +1,5 @@
+`%||%` <- function(x, y) if (is.null(x)) y else x
+
 #' Set and create directories in the configuration file
 #'
 #' @param configure_run_file name of run configuration file (do not include full path)
