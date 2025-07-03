@@ -52,7 +52,8 @@ set_up_simulation <- function(configure_run_file = "configure_run.yml", lake_dir
     config$output_settings$diagnostics_daily$depth <- as.numeric(config$output_settings$diagnostics_daily$depth)
   }
 
-  config$faasr <- initialize_faasr(config)
+  # config$faasr <- initialize_faasr(config)
+  config$faasr <- .faasr
   cat("=== DEBUG set_up_simulation AFTER initialize_faasr ===\n")
   cat("config$faasr is NULL:", is.null(config$faasr), "\n")
   if (!is.null(config$faasr)) {
