@@ -49,6 +49,7 @@ initialize_faasr <- function(config) {
 
   .faasr <<- list(
     DefaultDataStore = "restart",
+    LoggingDataStore = "restart",
     DataStores = list()
   )
   if (!is.null(config$s3)) {
