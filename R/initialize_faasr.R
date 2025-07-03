@@ -32,6 +32,19 @@
 #' @export
 initialize_faasr <- function(config) {
 
+  cat("=== DEBUG initialize_faasr START ===\n")
+  cat("Received config structure:\n")
+  cat("- config$s3 is NULL:", is.null(config$s3), "\n")
+  if (!is.null(config$s3)) {
+    cat("- config$s3 names:", paste(names(config$s3), collapse=", "), "\n")
+    for(name in names(config$s3)) {
+      cat("  - ", name, ":", 
+          "endpoint=", config$s3[[name]]$endpoint %||% "NULL", 
+          "bucket=", config$s3[[name]]$bucket %||% "NULL", "\n")
+    }
+  }
+  cat("- config$run_config$use_s3:", config$run_config$use_s3 %||% "NULL", "\n")
+
   .faasr <<- list(
     DefaultDataStore = "restart",
     DataStores = list()
@@ -73,6 +86,21 @@ initialize_faasr <- function(config) {
     warning(paste0("Use s3 is set to TRUE in the configuration file. ",
                    "AWS_SECRET_ACCESS_KEY environment variable is not set. S3 can still be used for downloading."))
   }
+
+  cat("=== Created faasr_config ===\n")
+  cat("- DefaultDataStore:", faasr_config$DefaultDataStore %||% "NULL", "\n")
+  cat("- LoggingDataStore:", faasr_config$LoggingDataStore %||% "NULL", "\n")
+  cat("- DataStores created:", paste(names(faasr_config$DataStores), collapse=", "), "\n")
+  
+  for(ds_name in names(faasr_config$DataStores)) {
+    ds <- faasr_config$DataStores[[ds_name]]
+    cat("  DataStore '", ds_name, "':\n")
+    cat("    Endpoint:", ds$Endpoint %||% "NULL", "\n")
+    cat("    Bucket:", ds$Bucket %||% "NULL", "\n")
+    cat("    Region:", ds$Region %||% "NULL", "\n")
+  }
+  cat("=== DEBUG initialize_faasr END ===\n")
+  
 
   return(invisible(.faasr))
 }
