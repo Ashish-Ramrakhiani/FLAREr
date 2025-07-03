@@ -657,61 +657,6 @@ initialize_obs_processing <- function(lake_directory, observation_yml = NA, conf
 #'                    config_set_name = "default")
 
 check_noaa_present <- function(lake_directory, configure_run_file = "configure_run.yml", config_set_name = "default"){
-
-  config <- set_up_simulation(configure_run_file, lake_directory, config_set_name = config_set_name)
-
-  cat("=== DEBUG check_noaa_present ===\n")
-  cat("About to call faasr_arrow_s3_bucket with:\n")
-  cat("- server_name: 'drivers'\n")
-  cat("- config$faasr available:", !is.null(config$faasr), "\n")
-  if (!is.null(config$faasr)) {
-    cat("- 'drivers' in DataStores:", "drivers" %in% names(config$faasr$DataStores), "\n")
-    cat("- Available DataStores:", paste(names(config$faasr$DataStores), collapse=", "), "\n")
-  }
-  cat("=== END DEBUG check_noaa_present ===\n")
-
-  noaa_forecasts_ready <- TRUE
-  if(config$run_config$forecast_horizon > 0){
-
-    met_start_datetime <- lubridate::as_datetime(config$run_config$start_datetime)
-    met_forecast_start_datetime <- lubridate::as_datetime(config$run_config$forecast_start_datetime)
-
-    if(config$run_config$forecast_horizon > 16){
-      met_forecast_start_datetime <- met_forecast_start_datetime - lubridate::days(config$met$forecast_lag_days)
-      if(met_forecast_start_datetime < met_start_datetime){
-        met_start_datetime <- met_forecast_start_datetime
-        message("horizon is > 16 days so adjusting forecast_start_datetime in the met file generation to use yesterdays forecast. But adjusted forecast_start_datetime < start_datetime")
-      }
-    }
-
-    reference_date <- lubridate::as_date(met_forecast_start_datetime)# - lubridate::days(1)
-    forecast_hour <- lubridate::hour(met_forecast_start_datetime)
-    site_id <- config$location$site_id
-    forecast_horizon <- config$run_config$forecast_horizon
-
-    prefix <- glue::glue(stringr::str_split_fixed(config$s3$drivers$bucket, "/", n = 2)[2], "/", config$met$future_met_model)
-    server_name <- "drivers"
-    forecast_dir <- FaaSr::faasr_arrow_s3_bucket(server_name = server_name, faasr_prefix = prefix,faasr_config=config$faasr)
-
-    #forecast_dir <- arrow::s3_bucket(bucket = glue::glue(config$s3$drivers$bucket, "/", config$met$future_met_model),
-                                     #endpoint_override =  config$s3$drivers$endpoint, anonymous = TRUE)
-
-    check_date <- function(forecast_dir){
-
-      tryCatch(
-        # This is what I want to do...
-        {
-
-          forecast_dir$ls()
-          return(TRUE)
-        },
-        # ... but if an error occurs, tell me what happened:
-        error=function(error_message) {
-          message("NOAA Forecast is not avialable.")
-          message("And below is the error message from R:")
-          message(error_message)
-          return(FALSE)
-        })check_noaa_present <- function(lake_directory, configure_run_file = "configure_run.yml", config_set_name = "default"){
   
   cat("=== DEBUG check_noaa_present START ===\n")
   
