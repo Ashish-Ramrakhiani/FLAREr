@@ -1,3 +1,5 @@
+`%||%` <- function(x, y) if (is.null(x)) y else x
+
 #' Initialize FaaSr configuration
 #'
 #' @description Creates a FaaSr configuration object with proper settings for
