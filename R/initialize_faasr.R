@@ -90,18 +90,18 @@ initialize_faasr <- function(config) {
   }
 
   cat("=== Created faasr_config ===\n")
-  cat("- DefaultDataStore:", faasr_config$DefaultDataStore %||% "NULL", "\n")
-  cat("- LoggingDataStore:", faasr_config$LoggingDataStore %||% "NULL", "\n")
-  cat("- DataStores created:", paste(names(faasr_config$DataStores), collapse=", "), "\n")
-  
-  for(ds_name in names(faasr_config$DataStores)) {
-    ds <- faasr_config$DataStores[[ds_name]]
-    cat("  DataStore '", ds_name, "':\n")
-    cat("    Endpoint:", ds$Endpoint %||% "NULL", "\n")
-    cat("    Bucket:", ds$Bucket %||% "NULL", "\n")
-    cat("    Region:", ds$Region %||% "NULL", "\n")
-  }
-  cat("=== DEBUG initialize_faasr END ===\n")
+cat("- DefaultDataStore:", .faasr$DefaultDataStore %||% "NULL", "\n")
+cat("- LoggingDataStore:", .faasr$LoggingDataStore %||% "NULL", "\n")
+cat("- DataStores created:", paste(names(.faasr$DataStores), collapse=", "), "\n")
+
+for(ds_name in names(.faasr$DataStores)) {
+  ds <- .faasr$DataStores[[ds_name]]
+  cat("  DataStore '", ds_name, "':\n")
+  cat("    Endpoint:", ds$Endpoint %||% "NULL", "\n")
+  cat("    Bucket:", ds$Bucket %||% "NULL", "\n")
+  cat("    Region:", ds$Region %||% "NULL", "\n")
+}
+cat("=== DEBUG initialize_faasr END ===\n")
   
 
   return(invisible(.faasr))
