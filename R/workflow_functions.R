@@ -657,62 +657,204 @@ initialize_obs_processing <- function(lake_directory, observation_yml = NA, conf
 #'                    config_set_name = "default")
 
 check_noaa_present <- function(lake_directory, configure_run_file = "configure_run.yml", config_set_name = "default"){
-
+  
+  cat("=== DEBUG check_noaa_present START ===\n")
+  
   config <- set_up_simulation(configure_run_file, lake_directory, config_set_name = config_set_name)
-
+  cat("✅ set_up_simulation completed successfully\n")
+  
   noaa_forecasts_ready <- TRUE
+  
   if(config$run_config$forecast_horizon > 0){
-
+    cat("📊 Forecast horizon > 0, checking NOAA data...\n")
+    
+    # Debug timing calculations
     met_start_datetime <- lubridate::as_datetime(config$run_config$start_datetime)
     met_forecast_start_datetime <- lubridate::as_datetime(config$run_config$forecast_start_datetime)
-
+    
+    cat("⏰ Datetime calculations:\n")
+    cat("   - met_start_datetime:", as.character(met_start_datetime), "\n")
+    cat("   - met_forecast_start_datetime:", as.character(met_forecast_start_datetime), "\n")
+    cat("   - forecast_horizon:", config$run_config$forecast_horizon, "\n")
+    
     if(config$run_config$forecast_horizon > 16){
       met_forecast_start_datetime <- met_forecast_start_datetime - lubridate::days(config$met$forecast_lag_days)
+      cat("   - Adjusted met_forecast_start_datetime (>16 days):", as.character(met_forecast_start_datetime), "\n")
+      
       if(met_forecast_start_datetime < met_start_datetime){
         met_start_datetime <- met_forecast_start_datetime
+        cat("   - Further adjusted met_start_datetime:", as.character(met_start_datetime), "\n")
         message("horizon is > 16 days so adjusting forecast_start_datetime in the met file generation to use yesterdays forecast. But adjusted forecast_start_datetime < start_datetime")
       }
     }
-
-    reference_date <- lubridate::as_date(met_forecast_start_datetime)# - lubridate::days(1)
+    
+    # Debug path components
+    reference_date <- lubridate::as_date(met_forecast_start_datetime)
     forecast_hour <- lubridate::hour(met_forecast_start_datetime)
     site_id <- config$location$site_id
     forecast_horizon <- config$run_config$forecast_horizon
-
+    
+    cat("🔍 Path components:\n")
+    cat("   - reference_date:", as.character(reference_date), "\n")
+    cat("   - forecast_hour:", forecast_hour, "\n")
+    cat("   - site_id:", site_id, "\n")
+    cat("   - forecast_horizon:", forecast_horizon, "\n")
+    
+    # Debug S3 configuration from FLARE config
+    cat("🗂️ FLARE S3 Configuration:\n")
+    cat("   - config$s3$drivers$bucket:", config$s3$drivers$bucket, "\n")
+    cat("   - config$s3$drivers$endpoint:", config$s3$drivers$endpoint, "\n")
+    cat("   - config$met$future_met_model:", config$met$future_met_model, "\n")
+    
+    # Debug prefix construction
+    drivers_bucket_split <- stringr::str_split_fixed(config$s3$drivers$bucket, "/", n = 2)
+    cat("   - drivers_bucket_split[1] (bucket name):", drivers_bucket_split[1], "\n")
+    cat("   - drivers_bucket_split[2] (base path):", drivers_bucket_split[2], "\n")
+    
     prefix <- glue::glue(stringr::str_split_fixed(config$s3$drivers$bucket, "/", n = 2)[2], "/", config$met$future_met_model)
+    cat("   - constructed prefix:", prefix, "\n")
+    
+    # Substitute variables in the prefix
+    prefix_with_vars <- gsub("\\{reference_date\\}", reference_date, prefix)
+    prefix_with_vars <- gsub("\\{site_id\\}", site_id, prefix_with_vars)
+    cat("   - prefix after variable substitution:", prefix_with_vars, "\n")
+    
+    # Debug FaaSr configuration
+    cat("🔧 FaaSr Config Debug:\n")
+    cat("   - config$faasr exists:", !is.null(config$faasr), "\n")
+    if (!is.null(config$faasr)) {
+      cat("   - Available DataStores:", paste(names(config$faasr$DataStores), collapse=", "), "\n")
+      cat("   - DefaultDataStore:", config$faasr$DefaultDataStore %||% "NULL", "\n")
+      cat("   - 'drivers' in DataStores:", "drivers" %in% names(config$faasr$DataStores), "\n")
+      
+      if ("drivers" %in% names(config$faasr$DataStores)) {
+        drivers_ds <- config$faasr$DataStores[["drivers"]]
+        cat("   - drivers DataStore configuration:\n")
+        cat("     - Endpoint:", drivers_ds$Endpoint %||% "NULL", "\n")
+        cat("     - Bucket:", drivers_ds$Bucket %||% "NULL", "\n")
+        cat("     - Region:", drivers_ds$Region %||% "NULL", "\n")
+        cat("     - Anonymous:", drivers_ds$Anonymous %||% "NULL", "\n")
+        cat("     - AccessKey:", ifelse(is.null(drivers_ds$AccessKey), "NULL", "***SET***"), "\n")
+        cat("     - SecretKey:", ifelse(is.null(drivers_ds$SecretKey), "NULL", "***SET***"), "\n")
+      } else {
+        cat("   - ❌ 'drivers' DataStore not found!\n")
+      }
+    } else {
+      cat("   - ❌ config$faasr is NULL!\n")
+    }
+    
+    # Test S3 connection
+    cat("🌐 Testing FaaSr Arrow S3 Connection...\n")
     server_name <- "drivers"
-    forecast_dir <- FaaSr::faasr_arrow_s3_bucket(server_name = server_name, faasr_prefix = prefix,faasr_config=config$faasr)
-
-    #forecast_dir <- arrow::s3_bucket(bucket = glue::glue(config$s3$drivers$bucket, "/", config$met$future_met_model),
-                                     #endpoint_override =  config$s3$drivers$endpoint, anonymous = TRUE)
-
-    check_date <- function(forecast_dir){
-
-      tryCatch(
-        # This is what I want to do...
-        {
-
-          forecast_dir$ls()
+    
+    # Debug what will be passed to faasr_arrow_s3_bucket
+    cat("   - server_name:", server_name, "\n")
+    cat("   - faasr_prefix:", prefix, "\n")
+    cat("   - Will result in bucket path:", paste0(config$faasr$DataStores$drivers$Bucket %||% "NULL", "/", prefix), "\n")
+    
+    tryCatch({
+      forecast_dir <- FaaSr::faasr_arrow_s3_bucket(server_name = server_name, 
+                                                   faasr_prefix = prefix,
+                                                   faasr_config = config$faasr)
+      cat("✅ faasr_arrow_s3_bucket created successfully\n")
+      cat("   - forecast_dir class:", class(forecast_dir), "\n")
+      
+      # Test listing with enhanced error handling
+      cat("📁 Testing directory listing...\n")
+      
+      check_date <- function(forecast_dir){
+        tryCatch({
+          cat("   - Attempting forecast_dir$ls()...\n")
+          file_list <- forecast_dir$ls()
+          cat("   - ✅ forecast_dir$ls() succeeded!\n")
+          cat("   - Found", length(file_list), "items\n")
+          if (length(file_list) > 0) {
+            cat("   - First few items:", paste(head(file_list, 3), collapse=", "), "\n")
+          } else {
+            cat("   - ⚠️ Directory is empty\n")
+          }
           return(TRUE)
-        },
-        # ... but if an error occurs, tell me what happened:
-        error=function(error_message) {
-          message("NOAA Forecast is not avialable.")
+        }, error = function(error_message) {
+          cat("   - ❌ forecast_dir$ls() failed\n")
+          cat("   - Error class:", class(error_message), "\n")
+          cat("   - Error message:", error_message$message, "\n")
+          cat("   - Error call:", deparse(error_message$call), "\n")
+          
+          # Detailed S3 error analysis
+          error_msg <- error_message$message
+          if (grepl("PermanentRedirect", error_msg)) {
+            cat("   - 🔍 Analysis: HTTP 301 PermanentRedirect\n")
+            cat("     - This means the bucket exists but wrong endpoint/region\n")
+            cat("     - Check if bucket region matches endpoint region\n")
+          } else if (grepl("NoSuchBucket", error_msg)) {
+            cat("   - 🔍 Analysis: Bucket doesn't exist\n")
+          } else if (grepl("NoSuchKey", error_msg)) {
+            cat("   - 🔍 Analysis: Path/prefix doesn't exist in bucket\n")
+          } else if (grepl("AccessDenied", error_msg)) {
+            cat("   - 🔍 Analysis: Access denied - check credentials/permissions\n")
+          } else if (grepl("InvalidAccessKeyId", error_msg)) {
+            cat("   - 🔍 Analysis: Invalid access key\n")
+          } else if (grepl("SignatureDoesNotMatch", error_msg)) {
+            cat("   - 🔍 Analysis: Invalid secret key\n")
+          } else {
+            cat("   - 🔍 Analysis: Unknown S3 error\n")
+          }
+          
+          message("NOAA Forecast is not available.")
           message("And below is the error message from R:")
           message(error_message)
           return(FALSE)
         })
-    }
-
-    noaa_forecasts_ready <- check_date(forecast_dir)
-
+      }
+      
+      noaa_forecasts_ready <- check_date(forecast_dir)
+      
+    }, error = function(e) {
+      cat("❌ Failed to create faasr_arrow_s3_bucket\n")
+      cat("   - Error:", e$message, "\n")
+      cat("   - This suggests an issue with FaaSr configuration\n")
+      noaa_forecasts_ready <- FALSE
+    })
+    
+    # Compare with direct Arrow approach
+    cat("🔄 Testing Direct Arrow S3 Connection for comparison...\n")
+    tryCatch({
+      direct_bucket_path <- glue::glue(config$s3$drivers$bucket, "/", config$met$future_met_model)
+      # Add variable substitution
+      direct_bucket_path <- gsub("\\{reference_date\\}", reference_date, direct_bucket_path)
+      direct_bucket_path <- gsub("\\{site_id\\}", site_id, direct_bucket_path)
+      
+      cat("   - Direct bucket path:", direct_bucket_path, "\n")
+      cat("   - Direct endpoint:", config$s3$drivers$endpoint, "\n")
+      
+      direct_forecast_dir <- arrow::s3_bucket(bucket = direct_bucket_path,
+                                              endpoint_override = config$s3$drivers$endpoint, 
+                                              anonymous = TRUE)
+      cat("   - ✅ Direct arrow::s3_bucket created successfully\n")
+      
+      # Test direct listing
+      direct_files <- direct_forecast_dir$ls()
+      cat("   - ✅ Direct listing succeeded, found", length(direct_files), "items\n")
+      if (length(direct_files) > 0) {
+        cat("   - Direct listing items:", paste(head(direct_files, 3), collapse=", "), "\n")
+      }
+      
+    }, error = function(e) {
+      cat("   - ❌ Direct Arrow approach also failed:", e$message, "\n")
+    })
+    
+  } else {
+    cat("📊 Forecast horizon = 0, skipping NOAA check\n")
   }
-
+  
+  cat("🏁 Final result: noaa_forecasts_ready =", noaa_forecasts_ready, "\n")
+  
   if(!noaa_forecasts_ready){
-    message(paste0("waiting for NOAA forecast: ", config$run_config$forecast_start_datetime))
+    cat("⚠️ NOAA forecast not ready for:", config$run_config$forecast_start_datetime, "\n")
   }
+  
+  cat("=== DEBUG check_noaa_present END ===\n")
   return(noaa_forecasts_ready)
-
 }
 
 
