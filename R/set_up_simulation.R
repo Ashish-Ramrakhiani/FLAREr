@@ -51,6 +51,15 @@ set_up_simulation <- function(configure_run_file = "configure_run.yml", lake_dir
   }
 
   config$faasr <- initialize_faasr(config)
+  cat("=== DEBUG set_up_simulation AFTER initialize_faasr ===\n")
+  cat("config$faasr is NULL:", is.null(config$faasr), "\n")
+  if (!is.null(config$faasr)) {
+    cat("config$faasr$DefaultDataStore:", config$faasr$DefaultDataStore %||% "NULL", "\n")
+    cat("config$faasr$LoggingDataStore:", config$faasr$LoggingDataStore %||% "NULL", "\n")
+    cat("config$faasr DataStores available:", paste(names(config$faasr$DataStores), collapse=", "), "\n")
+  }
+  cat("=== END DEBUG set_up_simulation ===\n")
+  
   run_config <- get_run_config(configure_run_file, lake_directory, config, clean_start, config_set_name = config_set_name, sim_name = sim_name)
 
   config$run_config <- run_config
