@@ -16,6 +16,18 @@
 
 get_run_config <- function(configure_run_file = "configure_run.yml", lake_directory, config, clean_start = FALSE, config_set_name = "default", sim_name = NA){
 
+  cat("=== DEBUG get_run_config START ===\n")
+  cat("Global .faasr exists:", exists(".faasr"), "\n")
+  if (exists(".faasr")) {
+    cat("Global .faasr DataStores:", paste(names(.faasr$DataStores), collapse=", "), "\n")
+    cat("Global .faasr LoggingDataStore:", .faasr$LoggingDataStore %||% "NULL", "\n")
+  }
+  cat("config$faasr exists:", !is.null(config$faasr), "\n")
+  if (!is.null(config$faasr)) {
+    cat("config$faasr DataStores:", paste(names(config$faasr$DataStores), collapse=", "), "\n")
+  }
+  cat("=== END DEBUG get_run_config START ===\n")
+
   run_config <- yaml::read_yaml(file.path(lake_directory,"configuration", config_set_name, configure_run_file))
 
   if(is.na(sim_name)){
