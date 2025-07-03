@@ -646,6 +646,16 @@ check_noaa_present <- function(lake_directory, configure_run_file = "configure_r
 
   config <- set_up_simulation(configure_run_file, lake_directory, config_set_name = config_set_name)
 
+  cat("=== DEBUG check_noaa_present ===\n")
+  cat("About to call faasr_arrow_s3_bucket with:\n")
+  cat("- server_name: 'drivers'\n")
+  cat("- config$faasr available:", !is.null(config$faasr), "\n")
+  if (!is.null(config$faasr)) {
+    cat("- 'drivers' in DataStores:", "drivers" %in% names(config$faasr$DataStores), "\n")
+    cat("- Available DataStores:", paste(names(config$faasr$DataStores), collapse=", "), "\n")
+  }
+  cat("=== END DEBUG check_noaa_present ===\n")
+
   noaa_forecasts_ready <- TRUE
   if(config$run_config$forecast_horizon > 0){
 
