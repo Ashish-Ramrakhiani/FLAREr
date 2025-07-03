@@ -1,3 +1,5 @@
+`%||%` <- function(x, y) if (is.null(x)) y else x
+
 #' Get run configuration from s3 bucket
 #'
 #' @param configure_run_file file name (no path) of run configuration file
