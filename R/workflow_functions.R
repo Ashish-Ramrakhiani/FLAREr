@@ -699,7 +699,7 @@ check_noaa_present <- function(lake_directory, configure_run_file = "configure_r
         error=function(error_message) {
           message("NOAA Forecast is not avialable.")
           message("And below is the error message from R:")
-          message(error_message)
+          #message(error_message)
           return(FALSE)
         })
     }
