@@ -450,15 +450,15 @@ test_that("put_targets correctly handles files with and without S3", {
       config = config
     )
   )
-  .faasr <<- config$faasr
 
   filename <- basename(insitu_file)
   folder_path <- file.path(stringr::str_split_fixed(config$s3$targets$bucket, "/", n = 2)[2], site_id)
   tryCatch({
-    FaaSr::faasr_delete_file(
+    flare_delete_file(
       server_name = "targets",
       remote_folder = folder_path,
-      remote_file = filename
+      remote_file = filename,
+      config = config
     )
   }, error = function(e) {
     message("Error occurred while deleting restart file: ", e$message)
@@ -471,10 +471,11 @@ test_that("put_targets correctly handles files with and without S3", {
   filename <- basename(met_file)
 
   tryCatch({
-    FaaSr::faasr_delete_file(
+    flare_delete_file(
       server_name = "targets",
       remote_folder = folder_path,
-      remote_file = filename
+      remote_file = filename,
+      config = config
     )
   }, error = function(e) {
     message("Error occurred while deleting restart file: ", e$message)
@@ -487,10 +488,11 @@ test_that("put_targets correctly handles files with and without S3", {
   filename <- basename(inflow_file)
 
   tryCatch({
-    FaaSr::faasr_delete_file(
+    flare_delete_file(
       server_name = "targets",
       remote_folder = folder_path,
-      remote_file = filename
+      remote_file = filename,
+      config = config
     )
   }, error = function(e) {
     message("Error occurred while deleting restart file: ", e$message)
@@ -546,15 +548,14 @@ test_that("get_targets correctly handles S3 and local storage scenarios", {
         stop("The S3 bucket path does not have the expected format.")
       }
 
-      .faasr <<-config$faasr
-
       remote_file_path <- file.path(bucket_split[2], site_id, file)
-      FaaSr::faasr_put_file(
+      flare_put_file(
         server_name = "targets",
         remote_folder = dirname(remote_file_path),
         remote_file = basename(remote_file_path),
         local_folder = dirname(local_file_path),
-        local_file = basename(local_file_path)
+        local_file = basename(local_file_path),
+        config = config
       )
     }
   }
@@ -711,10 +712,11 @@ test_that("update_run_config correctly handles various datetime formats and stor
 
 
   tryCatch({
-    FaaSr::faasr_delete_file(
+    flare_delete_file(
       server_name = "restart",
       remote_folder = folder_path,
-      remote_file = filename
+      remote_file = filename,
+      config = config
     )
   }, error = function(e) {
     message("Error occurred while deleting restart file: ", e$message)
@@ -750,8 +752,6 @@ test_that("delete_restart correctly handles S3 file deletion scenarios", {
     "restart_test_3.nc"
   )
 
-  .faasr <<-config$faasr
-
   restart_dir <- file.path(dir,"restart", site_id, sim_name)
   if (!dir.exists(restart_dir)) {
     dir.create(restart_dir, recursive = TRUE)
@@ -763,12 +763,13 @@ test_that("delete_restart correctly handles S3 file deletion scenarios", {
     file.create(file_path)
 
     tryCatch({
-      FaaSr::faasr_put_file(
+      flare_put_file(
         server_name = "restart",
         remote_folder = remote_dir,
         remote_file = file,
         local_folder = restart_dir,
-        local_file = file
+        local_file = file,
+        config = config
       )
       if (file.exists(file_path)) {
         file.remove(file_path)
