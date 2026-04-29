@@ -38,7 +38,6 @@ create_flow_files <- function(flow_forecast_dir = NULL,
                               config = config) {
 
   lake_name_code <- site_id
-  faasr_config <- config$faasr
 
   server_name <- if (flow_type == "inflow") {
     "inflow_drivers"
@@ -62,14 +61,10 @@ create_flow_files <- function(flow_forecast_dir = NULL,
       vars <- arrow_env_vars()
 
       prefix <- file.path(stringr::str_split_fixed(bucket, "/", n = 2)[2],flow_forecast_dir)
-      future_s3 <- FaaSr::faasr_arrow_s3_bucket(server_name = server_name,faasr_prefix = prefix,faasr_config=config$faasr)
+      future_s3 <- flare_arrow_s3_bucket(server_name = server_name, faasr_prefix = prefix, config = config)
 
-      #future_s3 <- arrow::s3_bucket(bucket = file.path(bucket, flow_forecast_dir),
-      #endpoint_override = endpoint)
       prefix <- file.path(stringr::str_split_fixed(bucket, "/", n = 2)[2],flow_historical_dir)
-      hist_s3 <- FaaSr::faasr_arrow_s3_bucket(server_name = server_name,faasr_prefix = prefix,faasr_config=config$faasr)
-      #hist_s3 <- arrow::s3_bucket(bucket = file.path(bucket,flow_historical_dir),
-      #endpoint_override = endpoint)
+      hist_s3 <- flare_arrow_s3_bucket(server_name = server_name, faasr_prefix = prefix, config = config)
       unset_arrow_vars(vars)
     } else {
       if (is.null(local_directory)) {
@@ -86,8 +81,7 @@ create_flow_files <- function(flow_forecast_dir = NULL,
       vars <- arrow_env_vars()
       future_s3 <- NULL
       prefix <- file.path(stringr::str_split_fixed(bucket, "/", n = 2)[2],flow_historical_dir)
-      hist_s3 <- FaaSr::faasr_arrow_s3_bucket(server_name = server_name,faasr_prefix = prefix,faasr_config=config$faasr)
-      #hist_s3 <- arrow::s3_bucket(bucket = file.path(bucket,flow_historical_dir), endpoint_override = endpoint)
+      hist_s3 <- flare_arrow_s3_bucket(server_name = server_name, faasr_prefix = prefix, config = config)
       unset_arrow_vars(vars)
     } else {
       if (is.null(local_directory)) {
@@ -107,8 +101,7 @@ create_flow_files <- function(flow_forecast_dir = NULL,
       hist_s3 <- NULL
 
       prefix <- file.path(stringr::str_split_fixed(bucket, "/", n = 2)[2],flow_forecast_dir)
-      future_s3 <- FaaSr::faasr_arrow_s3_bucket(server_name = server_name,faasr_prefix = prefix,faasr_config=config$faasr)
-      #future_s3 <- arrow::s3_bucket(bucket = file.path(bucket,flow_forecast_dir), endpoint_override = endpoint)
+      future_s3 <- flare_arrow_s3_bucket(server_name = server_name, faasr_prefix = prefix, config = config)
       unset_arrow_vars(vars)
     } else {
       if (is.null(local_directory)) {
