@@ -100,16 +100,17 @@ flare_get_file <- function(local_file, remote_file,
     dst <- file.path(local_folder, local_file)
     dir.create(dirname(dst), recursive = TRUE, showWarnings = FALSE)
     if (isTRUE(s3$anonymous)) {
+      bp <- .flare_split_bucket(s3$bucket)
       endpoint <- s3$endpoint
       if (!grepl("^https?://", endpoint)) endpoint <- paste0("https://", endpoint)
-      url <- file.path(endpoint, s3$bucket, remote_folder, remote_file)
+      url <- file.path(endpoint, bp[1], remote_folder, remote_file)
       utils::download.file(url, destfile = dst, mode = "wb", quiet = TRUE)
       return(invisible(TRUE))
     }
     bp <- .flare_split_bucket(s3$bucket)
     ep <- .flare_split_endpoint(s3$endpoint)
     aws.s3::save_object(
-      object    = file.path(bp[2], remote_folder, remote_file),
+      object    = file.path(remote_folder, remote_file),
       bucket    = bp[1],
       file      = dst,
       region    = ep[1],
@@ -152,7 +153,7 @@ flare_put_file <- function(local_file, remote_file,
     ep <- .flare_split_endpoint(s3$endpoint)
     aws.s3::put_object(
       file      = file.path(local_folder, local_file),
-      object    = file.path(bp[2], remote_folder, remote_file),
+      object    = file.path(remote_folder, remote_file),
       bucket    = bp[1],
       region    = ep[1],
       base_url  = ep[2],
@@ -194,7 +195,7 @@ flare_delete_file <- function(remote_file,
     bp <- .flare_split_bucket(s3$bucket)
     ep <- .flare_split_endpoint(s3$endpoint)
     aws.s3::delete_object(
-      object    = file.path(bp[2], remote_folder, remote_file),
+      object    = file.path(remote_folder, remote_file),
       bucket    = bp[1],
       region    = ep[1],
       base_url  = ep[2],
@@ -232,10 +233,9 @@ flare_get_folder_list <- function(server_name = "",
     s3 <- .flare_require_server(server_name, config)
     bp <- .flare_split_bucket(s3$bucket)
     ep <- .flare_split_endpoint(s3$endpoint)
-    full_prefix <- if (nzchar(prefix)) file.path(bp[2], prefix) else bp[2]
     files <- aws.s3::get_bucket(
       bucket    = bp[1],
-      prefix    = full_prefix,
+      prefix    = prefix,
       region    = ep[1],
       base_url  = ep[2],
       use_https = as.logical(Sys.getenv("USE_HTTPS"))
@@ -279,7 +279,8 @@ flare_arrow_s3_bucket <- function(server_name  = "",
 
   if (mode == "s3") {
     s3 <- .flare_require_server(server_name, config)
-    bucket <- if (nzchar(faasr_prefix)) paste0(s3$bucket, "/", faasr_prefix) else s3$bucket
+    bp <- .flare_split_bucket(s3$bucket)
+    bucket <- if (nzchar(faasr_prefix)) paste0(bp[1], "/", faasr_prefix) else bp[1]
     if (isTRUE(s3$anonymous)) {
       return(arrow::s3_bucket(
         bucket            = bucket,
