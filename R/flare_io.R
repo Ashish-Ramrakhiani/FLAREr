@@ -97,12 +97,21 @@ flare_get_file <- function(local_file, remote_file,
 
   if (mode == "s3") {
     s3 <- .flare_require_server(server_name, config)
+    dst <- file.path(local_folder, local_file)
+    dir.create(dirname(dst), recursive = TRUE, showWarnings = FALSE)
+    if (isTRUE(s3$anonymous)) {
+      endpoint <- s3$endpoint
+      if (!grepl("^https?://", endpoint)) endpoint <- paste0("https://", endpoint)
+      url <- file.path(endpoint, s3$bucket, remote_folder, remote_file)
+      utils::download.file(url, destfile = dst, mode = "wb", quiet = TRUE)
+      return(invisible(TRUE))
+    }
     bp <- .flare_split_bucket(s3$bucket)
     ep <- .flare_split_endpoint(s3$endpoint)
     aws.s3::save_object(
       object    = file.path(bp[2], remote_folder, remote_file),
       bucket    = bp[1],
-      file      = file.path(local_folder, local_file),
+      file      = dst,
       region    = ep[1],
       base_url  = ep[2],
       use_https = as.logical(Sys.getenv("USE_HTTPS"))
