@@ -86,13 +86,23 @@ flare_get_file <- function(local_file, remote_file,
   mode <- flare_io_mode(config)
 
   if (mode == "faasr") {
-    return(.flare_faasr("faasr_get_file")(
-      local_file    = local_file,
-      remote_file   = remote_file,
-      server_name   = server_name,
-      local_folder  = local_folder,
-      remote_folder = remote_folder
-    ))
+    dst <- file.path(local_folder, local_file)
+    dir.create(dirname(dst), recursive = TRUE, showWarnings = FALSE)
+    res <- tryCatch(
+      .flare_faasr("faasr_get_file")(
+        local_file    = local_file,
+        remote_file   = remote_file,
+        server_name   = server_name,
+        local_folder  = local_folder,
+        remote_folder = remote_folder
+      ),
+      error = function(e) e
+    )
+    if (inherits(res, "error") || !file.exists(dst)) {
+      stop(sprintf("Not Found (404): faasr_get_file failed for s3://%s/%s/%s",
+                   server_name, remote_folder, remote_file))
+    }
+    return(invisible(res))
   }
 
   if (mode == "s3") {
