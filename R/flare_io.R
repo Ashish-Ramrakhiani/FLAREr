@@ -281,6 +281,16 @@ flare_arrow_s3_bucket <- function(server_name  = "",
   mode <- flare_io_mode(config)
 
   if (mode == "faasr") {
+    s3_yaml <- config$s3[[server_name]]
+    if (!is.null(s3_yaml) && isTRUE(s3_yaml$anonymous)) {
+      bp <- .flare_split_bucket(s3_yaml$bucket)
+      bucket <- if (nzchar(faasr_prefix)) paste0(bp[1], "/", faasr_prefix) else bp[1]
+      return(arrow::s3_bucket(
+        bucket            = bucket,
+        endpoint_override = s3_yaml$endpoint,
+        anonymous         = TRUE
+      ))
+    }
     return(.flare_faasr("faasr_arrow_s3_bucket")(
       server_name  = server_name,
       faasr_prefix = faasr_prefix
