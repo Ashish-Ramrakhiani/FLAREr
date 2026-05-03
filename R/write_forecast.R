@@ -17,25 +17,29 @@ write_forecast <- function(da_forecast_output,
                                  endpoint = NULL,
                                  local_directory = NULL,config = NULL){
 
-  if(use_s3){
-    if(is.null(bucket) | is.null(endpoint)){
-      stop("scoring function needs bucket and endpoint if use_s3=TRUE")
-    }
-
-    vars <- arrow_env_vars()
-    server_name <-  "forecasts_parquet"
-    prefix <- glue::glue(stringr::str_split_fixed(bucket, "/", n = 2)[2])
-
-    output_directory <- flare_arrow_s3_bucket(server_name = server_name, faasr_prefix = prefix, config = config)
-    #output_directory <- arrow::s3_bucket(bucket = bucket,
-                                         #endpoint_override =  endpoint)
-    on.exit(unset_arrow_vars(vars))
-  }else{
-    if(is.null(local_directory)){
-      stop("scoring function needs local_directory if use_s3=FALSE")
-    }
-    output_directory <- arrow::SubTreeFileSystem$create(local_directory)
+  # Single dispatching call. flare_arrow_s3_bucket handles the
+  # mode=s3/faasr arrow::s3_bucket(...) path AND the mode=local
+  # SubTreeFileSystem path via the local_path argument (Design 2).
+  # Behavior preserved across all modes: S3 callers get the same
+  # bucket-rooted handle; local callers get the same local-directory
+  # handle the prior `if/else` produced.
+  if(use_s3 && (is.null(bucket) || is.null(endpoint))){
+    stop("write_forecast needs bucket and endpoint if use_s3=TRUE")
   }
+  if(!use_s3 && is.null(local_directory)){
+    stop("write_forecast needs local_directory if use_s3=FALSE")
+  }
+
+  vars <- arrow_env_vars()
+  on.exit(unset_arrow_vars(vars))
+
+  prefix <- if (use_s3) glue::glue(stringr::str_split_fixed(bucket, "/", n = 2)[2]) else ""
+  output_directory <- flare_arrow_s3_bucket(
+    server_name  = "forecasts_parquet",
+    faasr_prefix = prefix,
+    local_path   = local_directory,
+    config       = config
+  )
 
   x <- da_forecast_output$states_depth
   pars <- da_forecast_output$pars

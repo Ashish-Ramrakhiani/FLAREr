@@ -44,30 +44,28 @@ create_met_files <- function(config, lake_directory, met_forecast_start_datetime
       stop("Only forecasts that start at 00:00:00 UTC are currently supported")
     }
 
-    if(config$met$future_met_use_s3){
-
-      if(is.null(bucket) | is.null(endpoint)){
-        stop("inflow forecast function needs bucket and endpoint if use_s3=TRUE")
-      }
-      vars <- arrow_env_vars()
-
-      reference_date <- forecast_date
-      faasr_prefix <- glue::glue(stringr::str_split_fixed(bucket, "/", n = 2)[2],"/",config$met$future_met_model)
-
-      forecast_dir <- flare_arrow_s3_bucket(server_name = "drivers", faasr_prefix = faasr_prefix, config = config)
-
-      unset_arrow_vars(vars)
-    }else{
-      if(is.null(local_directory)){
-        stop("met forecast function needs local_directory if use_s3=FALSE")
-      }
-
-
-
-      forecast_dir <- arrow::SubTreeFileSystem$create(glue::glue(lake_directory, "/",
-                                                                 local_directory, "/",
-                                                                 config$met$future_met_model))
+    # Validation preserved from prior if/else
+    if(config$met$future_met_use_s3 && (is.null(bucket) || is.null(endpoint))){
+      stop("met forecast function needs bucket and endpoint if future_met_use_s3=TRUE")
     }
+    if(!config$met$future_met_use_s3 && is.null(local_directory)){
+      stop("met forecast function needs local_directory if future_met_use_s3=FALSE")
+    }
+
+    vars <- arrow_env_vars()
+    on.exit(unset_arrow_vars(vars), add = TRUE)
+
+    reference_date <- forecast_date
+    faasr_prefix <- if (config$met$future_met_use_s3) {
+      glue::glue(stringr::str_split_fixed(bucket, "/", n = 2)[2], "/", config$met$future_met_model)
+    } else ""
+    forecast_dir <- flare_arrow_s3_bucket(
+      server_name   = "drivers",
+      faasr_prefix  = faasr_prefix,
+      local_path    = glue::glue(lake_directory, "/", local_directory, "/", config$met$future_met_model),
+      mode_override = if (config$met$future_met_use_s3) NULL else "local",
+      config        = config
+    )
   }
 
   if(forecast_horizon == 0){
@@ -75,18 +73,16 @@ create_met_files <- function(config, lake_directory, met_forecast_start_datetime
   }
 
   if(start_datetime < forecast_start_datetime){
-    if(config$met$historical_met_use_s3){
-
-      faasr_prefix <- glue::glue(stringr::str_split_fixed(bucket, "/", n = 2)[2], "/",
-                                 config$met$historical_met_model)
-
-      past_dir <- flare_arrow_s3_bucket(server_name = "drivers", faasr_prefix = faasr_prefix, config = config)
-
-    }else{
-      past_dir <-  arrow::SubTreeFileSystem$create(glue::glue(lake_directory, "/",
-                                                              local_directory, "/",
-                                                              config$met$historical_met_model))
-    }
+    faasr_prefix <- if (config$met$historical_met_use_s3) {
+      glue::glue(stringr::str_split_fixed(bucket, "/", n = 2)[2], "/", config$met$historical_met_model)
+    } else ""
+    past_dir <- flare_arrow_s3_bucket(
+      server_name   = "drivers",
+      faasr_prefix  = faasr_prefix,
+      local_path    = glue::glue(lake_directory, "/", local_directory, "/", config$met$historical_met_model),
+      mode_override = if (config$met$historical_met_use_s3) NULL else "local",
+      config        = config
+    )
   }else{
     past_dir <- NULL
   }

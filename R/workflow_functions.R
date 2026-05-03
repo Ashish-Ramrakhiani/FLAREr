@@ -14,49 +14,61 @@
 
 get_run_config <- function(configure_run_file = "configure_run.yml", lake_directory, config, clean_start = FALSE, config_set_name = "default", sim_name = NA){
 
+  # Category 3a: unified local + remote logic via list-then-get.
+  # flare_get_folder_list with local_path enumerates the local restart
+  # folder when mode=local; lists S3 when mode=s3/faasr. flare_get_file
+  # in mode=local is a no-op (file is already at local_folder when the
+  # local listing claimed it exists). Behavior matches the team's prior
+  # explicit local-vs-S3 branches:
+  #   - clean_start=TRUE             -> always write fresh from FCRE config
+  #   - mode=local, file present     -> no-op, read it back
+  #   - mode=local, file absent      -> write fresh
+  #   - mode=remote, file present    -> download, read it back
+  #   - mode=remote, file absent     -> write fresh
+
   run_config <- yaml::read_yaml(file.path(lake_directory,"configuration", config_set_name, configure_run_file))
 
   if(is.na(sim_name)){
     sim_name <- run_config$sim_name
   }
 
-  dir.create(file.path(lake_directory, "restart", config$location$site_id, sim_name), recursive = TRUE, showWarnings = FALSE)
+  server_name   <- "restart"
+  remote_folder <- file.path(stringr::str_split_fixed(config$s3$restart$bucket, "/", n = 2)[2],
+                             config$location$site_id, sim_name)
+  remote_file   <- configure_run_file
+  local_folder  <- file.path(lake_directory, "restart", config$location$site_id, sim_name)
+  local_file    <- configure_run_file
+  local_yaml    <- file.path(local_folder, local_file)
 
-  if(!config$run_config$use_s3 | clean_start){
+  dir.create(local_folder, recursive = TRUE, showWarnings = FALSE)
 
-    restart_exists <- file.exists(file.path(lake_directory, "restart", config$location$site_id, sim_name, configure_run_file))
-    if(!restart_exists){
-      yaml::write_yaml(run_config, file.path(lake_directory,"restart", config$location$site_id, sim_name, configure_run_file))
-    }else if(clean_start){
-      yaml::write_yaml(run_config, file.path(lake_directory,"restart", config$location$site_id, sim_name, configure_run_file))
-    }
-  }else if(config$run_config$use_s3 & !clean_start){
-
-    server_name <- "restart"
-    remote_folder <- file.path(stringr::str_split_fixed(config$s3$restart$bucket, "/", n = 2)[2], config$location$site_id, sim_name)
-    remote_file <- configure_run_file
-    local_folder <- file.path(lake_directory, "restart", config$location$site_id, sim_name)
-    local_file <- configure_run_file
-
-    files <- unlist(flare_get_folder_list(server_name = server_name, prefix = remote_folder, config = config))
-    restart_exists <- length(files) > 0 && any(basename(files) == remote_file)
-
-    if (restart_exists) {
-      flare_get_file(
-        server_name   = server_name,
-        remote_folder = remote_folder,
-        remote_file   = remote_file,
-        local_folder  = local_folder,
-        local_file    = local_file,
-        config        = config
-      )
-    } else {
-      message("run config not found at s3://", server_name, "/", remote_folder, "/", remote_file, " - clean start")
-      yaml::write_yaml(run_config, file.path(lake_directory, "restart", config$location$site_id, sim_name, configure_run_file))
-    }
+  restart_exists <- !clean_start && {
+    files <- unlist(flare_get_folder_list(
+      server_name = server_name,
+      prefix      = remote_folder,
+      local_path  = local_folder,
+      config      = config
+    ))
+    length(files) > 0 && any(basename(files) == remote_file)
   }
-  run_config <- yaml::read_yaml(file.path(lake_directory, "restart", config$location$site_id, sim_name, configure_run_file))
-  invisible(run_config)
+
+  if (restart_exists) {
+    flare_get_file(
+      server_name   = server_name,
+      remote_folder = remote_folder,
+      remote_file   = remote_file,
+      local_folder  = local_folder,
+      local_file    = local_file,
+      config        = config
+    )
+  } else {
+    if (!clean_start) {
+      message("run config not found - clean start")
+    }
+    yaml::write_yaml(run_config, local_yaml)
+  }
+
+  invisible(yaml::read_yaml(local_yaml))
 }
 
 #' Get data from Github repository
@@ -90,7 +102,10 @@ get_git_repo <- function(lake_directory, directory, git_repo){
 #'
 put_targets <- function(site_id, cleaned_insitu_file = NA, cleaned_met_file = NA, cleaned_inflow_file = NA, use_s3 = FALSE, config=NULL){
 
-  if(use_s3){
+  # `use_s3` parameter is retained for API compatibility but no longer
+  # gates the calls below. flare_put_file dispatches via flare_io_mode():
+  # mode=s3/faasr uploads remotely; mode=local is a no-op (preserving the
+  # team's prior `if (use_s3)` gating behavior).
 
     if(!is.na(cleaned_insitu_file)){
 
@@ -162,7 +177,6 @@ put_targets <- function(site_id, cleaned_insitu_file = NA, cleaned_met_file = NA
       #                    base_url = stringr::str_split_fixed(config$s3$targets$endpoint, pattern = "\\.", n = 2)[2],
       #                    use_https = as.logical(Sys.getenv("USE_HTTPS")))
     }
-  }
 }
 
 #' Download target data from s3
@@ -172,13 +186,14 @@ put_targets <- function(site_id, cleaned_insitu_file = NA, cleaned_met_file = NA
 #' @keywords internal
 #'
 get_targets <- function(lake_directory, config=NULL){
-  if(config$run_config$use_s3){
-    download_s3_objects(lake_directory,
-                        bucket = stringr::str_split_fixed(config$s3$targets$bucket, "/", n = 2)[1],
-                        prefix = file.path(stringr::str_split_fixed(config$s3$targets$bucket, "/", n = 2)[2], config$location$site_id),
-                        region = stringr::str_split_fixed(config$s3$targets$endpoint, pattern = "\\.", n = 2)[1],
-                        base_url = stringr::str_split_fixed(config$s3$targets$endpoint, pattern = "\\.", n = 2)[2], config = config)
-  }
+  # No use_s3 gate: download_s3_objects' inner flare_get_folder_list
+  # returns character(0) in mode=local, so the download loop iterates
+  # zero times. Behavior is identical to the prior `if (use_s3)` gating.
+  download_s3_objects(lake_directory,
+                      bucket = stringr::str_split_fixed(config$s3$targets$bucket, "/", n = 2)[1],
+                      prefix = file.path(stringr::str_split_fixed(config$s3$targets$bucket, "/", n = 2)[2], config$location$site_id),
+                      region = stringr::str_split_fixed(config$s3$targets$endpoint, pattern = "\\.", n = 2)[1],
+                      base_url = stringr::str_split_fixed(config$s3$targets$endpoint, pattern = "\\.", n = 2)[2], config = config)
 }
 
 #' Get file path for driver forecasts
@@ -363,28 +378,22 @@ update_run_config <- function(lake_directory,
 
   file_name <- file.path(lake_directory,"restart",site_id, sim_name, configure_run_file)
   yaml::write_yaml(run_config, file_name)
-  if(use_s3){
 
-    local_folder <- dirname(file_name)
-    local_file <- basename(file_name)
-    remote_folder <- file.path(stringr::str_split_fixed(bucket, "/", n = 2)[2], site_id, sim_name)
-    remote_file <- configure_run_file
-    server_name <- "restart"
+  # No use_s3 gate: flare_put_file mode=local is a no-op, so this call
+  # has no side effect when running locally. Behavior identical to prior
+  # `if (use_s3)` gating.
+  local_folder <- dirname(file_name)
+  local_file <- basename(file_name)
+  remote_folder <- file.path(stringr::str_split_fixed(bucket, "/", n = 2)[2], site_id, sim_name)
+  remote_file <- configure_run_file
+  server_name <- "restart"
 
-    flare_put_file(server_name = server_name,
-                   local_folder = local_folder,
-                   local_file = local_file,
-                   remote_folder = remote_folder,
-                   remote_file = remote_file,
-                   config = config)
-
-    # aws.s3::put_object(file = file_name,
-    #                    object = file.path(stringr::str_split_fixed(bucket, "/", n = 2)[2], site_id, sim_name, configure_run_file),
-    #                    bucket = stringr::str_split_fixed(bucket, "/", n = 2)[1],
-    #                    region = stringr::str_split_fixed(endpoint, pattern = "\\.", n = 2)[1],
-    #                    base_url = stringr::str_split_fixed(endpoint, pattern = "\\.", n = 2)[2],
-    #                    use_https = as.logical(Sys.getenv("USE_HTTPS")))
-  }
+  flare_put_file(server_name = server_name,
+                 local_folder = local_folder,
+                 local_file = local_file,
+                 remote_folder = remote_folder,
+                 remote_file = remote_file,
+                 config = config)
 }
 
 #' Upload restart netcdf file to s3 bucket

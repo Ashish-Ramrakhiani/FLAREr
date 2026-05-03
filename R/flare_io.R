@@ -130,10 +130,11 @@ flare_get_file <- function(local_file, remote_file,
     return(invisible(TRUE))
   }
 
-  src <- file.path(.flare_local_root(config), server_name, remote_folder, remote_file)
-  dst <- file.path(local_folder, local_file)
-  dir.create(dirname(dst), recursive = TRUE, showWarnings = FALSE)
-  invisible(file.copy(src, dst, overwrite = TRUE))
+  # mode == "local"
+  # No-op (Reading A): preserves the team's pre-existing convention
+  # where pure-local mode skips the "remote put" step entirely; data
+  # is assumed to already be at its working-directory location.
+  invisible(TRUE)
 }
 
 #' Upload a single local file as an object.
@@ -172,10 +173,11 @@ flare_put_file <- function(local_file, remote_file,
     return(invisible(TRUE))
   }
 
-  src <- file.path(local_folder, local_file)
-  dst <- file.path(.flare_local_root(config), server_name, remote_folder, remote_file)
-  dir.create(dirname(dst), recursive = TRUE, showWarnings = FALSE)
-  invisible(file.copy(src, dst, overwrite = TRUE))
+  # mode == "local"
+  # No-op (Reading A): preserves the team's pre-existing convention
+  # where pure-local mode skips remote uploads. The data is already
+  # at its working-directory location; no rehoming needed.
+  invisible(TRUE)
 }
 
 #' Delete a single remote object.
@@ -214,21 +216,31 @@ flare_delete_file <- function(remote_file,
     return(invisible(TRUE))
   }
 
-  target <- file.path(.flare_local_root(config), server_name, remote_folder, remote_file)
-  if (file.exists(target)) invisible(file.remove(target)) else invisible(TRUE)
+  # mode == "local"
+  # No-op (Reading A): preserves the team's pre-existing convention
+  # where pure-local mode skips remote deletes.
+  invisible(TRUE)
 }
 
 #' List object keys under a prefix.
 #'
 #' @param server_name Name of the DataStore (key under `config$s3`).
 #' @param prefix Prefix to list under.
+#' @param local_path Optional local filesystem directory to enumerate
+#'   when `mode="local"`. When supplied AND mode resolves to "local",
+#'   returns `list.files(local_path, recursive=TRUE, full.names=FALSE)`.
+#'   When NULL (default) AND mode="local", returns `character(0)` —
+#'   preserves the team's prior convention where remote-list callers
+#'   no-op in pure-local mode (their iteration loops execute zero
+#'   times). New callers that need to do an existence check that
+#'   works in BOTH local and remote modes (e.g. get_run_config) supply
+#'   `local_path` so the local enumeration is meaningful.
 #' @param config FLAREr config list.
-#' @return Character vector of object keys (relative to the bucket
-#'   root) under `mode="s3"`/`"faasr"`, or relative file paths under
-#'   `mode="local"`.
+#' @return Character vector of object keys / relative file paths.
 #' @export
 flare_get_folder_list <- function(server_name = "",
                                   prefix      = "",
+                                  local_path  = NULL,
                                   config) {
   mode <- flare_io_mode(config)
 
@@ -254,9 +266,15 @@ flare_get_folder_list <- function(server_name = "",
     return(keys[!grepl("/$", keys)])
   }
 
-  root <- file.path(.flare_local_root(config), server_name, prefix)
-  if (!dir.exists(root)) return(character(0))
-  list.files(root, recursive = TRUE, full.names = FALSE)
+  # mode == "local"
+  # If caller supplied an explicit local_path, enumerate that directory.
+  # Otherwise empty result (Reading A no-op default), so existing
+  # remote-list callers keep their "iterate zero times in local mode"
+  # behavior unchanged.
+  if (!is.null(local_path) && dir.exists(local_path)) {
+    return(list.files(local_path, recursive = TRUE, full.names = FALSE))
+  }
+  character(0)
 }
 
 #' Return an `arrow::s3_bucket()` (or local) handle for a partitioned
@@ -270,15 +288,27 @@ flare_get_folder_list <- function(server_name = "",
 #'
 #' @param server_name Name of the DataStore (key under `config$s3`).
 #' @param faasr_prefix Optional sub-prefix appended to the bucket path.
+#' @param local_path Filesystem path used in `mode="local"`. Caller is
+#'   responsible for constructing this from any per-driver YAML
+#'   conventions (e.g. `config$met$future_met_model`). Ignored in
+#'   `mode="s3"`/`"faasr"`. If NULL in `mode="local"`, falls back to
+#'   `<.flare_local_root(config)>/<server_name>/<faasr_prefix>`.
+#' @param mode_override Optional explicit mode (`"local"`, `"s3"`, or
+#'   `"faasr"`) that bypasses `flare_io_mode(config)`. Useful when a
+#'   per-driver YAML toggle (e.g. `config$met$future_met_use_s3`,
+#'   `config$flows$use_flows_s3`) makes a SPECIFIC driver local even
+#'   though the global config writes outputs to S3. NULL (default) =
+#'   use config-driven dispatch.
 #' @param config FLAREr config list.
 #' @return An `arrow::s3_bucket()` handle (modes `s3`/`faasr`) or
-#'   `arrow::SubTreeFileSystem` rooted under the local lake directory
-#'   (mode `local`).
+#'   `arrow::SubTreeFileSystem` (mode `local`).
 #' @export
-flare_arrow_s3_bucket <- function(server_name  = "",
-                                  faasr_prefix = "",
+flare_arrow_s3_bucket <- function(server_name   = "",
+                                  faasr_prefix  = "",
+                                  local_path    = NULL,
+                                  mode_override = NULL,
                                   config) {
-  mode <- flare_io_mode(config)
+  mode <- if (!is.null(mode_override)) mode_override else flare_io_mode(config)
 
   if (mode == "faasr") {
     return(.flare_faasr("faasr_arrow_s3_bucket")(
@@ -306,6 +336,14 @@ flare_arrow_s3_bucket <- function(server_name  = "",
     ))
   }
 
+  # mode == "local"
+  # If caller supplied an explicit local_path (Design 2), use it
+  # verbatim — this lets caller-specific YAML path conventions
+  # (e.g. config$met$future_met_model) be honored byte-for-byte.
+  # Otherwise fall back to the generic <root>/<server>/<prefix> layout.
+  if (!is.null(local_path)) {
+    return(arrow::SubTreeFileSystem$create(local_path))
+  }
   arrow::SubTreeFileSystem$create(
     file.path(.flare_local_root(config), server_name, faasr_prefix)
   )

@@ -51,69 +51,54 @@ create_flow_files <- function(flow_forecast_dir = NULL,
 
   round_level <- 10
 
-  # set locations of flow drivers (s3 or local)
-  if (!is.null(flow_forecast_dir) & !is.null(flow_historical_dir)) {
-    if (use_s3) {
+  # set locations of flow drivers (s3 or local) — single dispatching call
+  # via flare_arrow_s3_bucket; mode=local uses the explicit local_path
+  # (Design 2) so file paths match the team's prior inline conventions.
 
-      if (is.null(bucket) | is.null(endpoint)) {
-        stop("needs bucket and endpoint if use_s3=TRUE")
-      }
-      vars <- arrow_env_vars()
-
-      prefix <- file.path(stringr::str_split_fixed(bucket, "/", n = 2)[2],flow_forecast_dir)
-      future_s3 <- flare_arrow_s3_bucket(server_name = server_name, faasr_prefix = prefix, config = config)
-
-      prefix <- file.path(stringr::str_split_fixed(bucket, "/", n = 2)[2],flow_historical_dir)
-      hist_s3 <- flare_arrow_s3_bucket(server_name = server_name, faasr_prefix = prefix, config = config)
-      unset_arrow_vars(vars)
-    } else {
-      if (is.null(local_directory)) {
-        stop("needs local_directory if use_s3=FALSE")
-      }
-      future_s3 <- arrow::SubTreeFileSystem$create(file.path(local_directory, flow_forecast_dir))
-      hist_s3 <-  arrow::SubTreeFileSystem$create(file.path(local_directory, flow_historical_dir))
-    }
-  }  else if (is.null(flow_forecast_dir) & !is.null(flow_historical_dir)) {
-    if (use_s3) {
-      if (is.null(bucket) | is.null(endpoint)) {
-        stop("needs bucket and endpoint if use_s3=TRUE")
-      }
-      vars <- arrow_env_vars()
-      future_s3 <- NULL
-      prefix <- file.path(stringr::str_split_fixed(bucket, "/", n = 2)[2],flow_historical_dir)
-      hist_s3 <- flare_arrow_s3_bucket(server_name = server_name, faasr_prefix = prefix, config = config)
-      unset_arrow_vars(vars)
-    } else {
-      if (is.null(local_directory)) {
-        stop("needs local_directory if use_s3=FALSE")
-      }
-      future_s3 <- NULL
-      hist_s3 <-  arrow::SubTreeFileSystem$create(file.path(local_directory, flow_historical_dir))
-    }
-  }else if (!is.null(flow_forecast_dir) & is.null(flow_historical_dir)) {
-    if (use_s3) {
-
-
-      if (is.null(bucket) | is.null(endpoint)) {
-        stop("needs bucket and endpoint if use_s3=TRUE")
-      }
-      vars <- arrow_env_vars()
-      hist_s3 <- NULL
-
-      prefix <- file.path(stringr::str_split_fixed(bucket, "/", n = 2)[2],flow_forecast_dir)
-      future_s3 <- flare_arrow_s3_bucket(server_name = server_name, faasr_prefix = prefix, config = config)
-      unset_arrow_vars(vars)
-    } else {
-      if (is.null(local_directory)) {
-        stop("needs local_directory if use_s3=FALSE")
-      }
-      hist_s3 <- NULL
-      future_s3 <-  arrow::SubTreeFileSystem$create(file.path(local_directory, flow_forecast_dir))
-    }
-  } else {
-    future_s3 <- NULL
-    hist_s3 <- NULL
+  # Validation: pre-existing requirements preserved.
+  if (use_s3 && (is.null(bucket) || is.null(endpoint))) {
+    stop("create_flow_files needs bucket and endpoint if use_s3=TRUE")
   }
+  if (!use_s3 && is.null(local_directory) &&
+      (!is.null(flow_forecast_dir) || !is.null(flow_historical_dir))) {
+    stop("create_flow_files needs local_directory if use_s3=FALSE")
+  }
+
+  # Setup arrow env vars once for the whole block (matches prior behavior
+  # where these were set inside each `if(use_s3)` branch).
+  vars <- arrow_env_vars()
+  on.exit(unset_arrow_vars(vars), add = TRUE)
+
+  # bucket_tail only used to build faasr_prefix in S3-bound modes;
+  # safe to compute as "" when bucket is NULL (mode=local will use
+  # local_path instead and ignore faasr_prefix).
+  bucket_tail <- if (!is.null(bucket)) stringr::str_split_fixed(bucket, "/", n = 2)[2] else ""
+
+  # `use_s3` is the per-driver toggle (e.g. config$flows$use_flows_s3),
+  # NOT the global config$run_config$use_s3. We pass it as mode_override
+  # so flare_arrow_s3_bucket honors the per-driver intent regardless of
+  # whether global config writes outputs to S3 / FaaSr.
+  driver_mode <- if (use_s3) NULL else "local"
+
+  future_s3 <- if (!is.null(flow_forecast_dir)) {
+    flare_arrow_s3_bucket(
+      server_name   = server_name,
+      faasr_prefix  = file.path(bucket_tail, flow_forecast_dir),
+      local_path    = if (!is.null(local_directory)) file.path(local_directory, flow_forecast_dir) else NULL,
+      mode_override = driver_mode,
+      config        = config
+    )
+  } else NULL
+
+  hist_s3 <- if (!is.null(flow_historical_dir)) {
+    flare_arrow_s3_bucket(
+      server_name   = server_name,
+      faasr_prefix  = file.path(bucket_tail, flow_historical_dir),
+      local_path    = if (!is.null(local_directory)) file.path(local_directory, flow_historical_dir) else NULL,
+      mode_override = driver_mode,
+      config        = config
+    )
+  } else NULL
 
   # when does the simulation start and end?
   start_datetime <- lubridate::as_datetime(start_datetime)
