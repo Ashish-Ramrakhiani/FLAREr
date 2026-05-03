@@ -38,50 +38,21 @@ get_run_config <- function(configure_run_file = "configure_run.yml", lake_direct
     local_folder <- file.path(lake_directory, "restart", config$location$site_id, sim_name)
     local_file <- configure_run_file
 
-    restart_exists <- tryCatch({
+    files <- unlist(flare_get_folder_list(server_name = server_name, prefix = remote_folder, config = config))
+    restart_exists <- any(basename(files) == remote_file)
+
+    if (restart_exists) {
       flare_get_file(
-        server_name = server_name,
+        server_name   = server_name,
         remote_folder = remote_folder,
-        remote_file = remote_file,
-        local_folder = local_folder,
-        local_file = local_file,
-        config = config
+        remote_file   = remote_file,
+        local_folder  = local_folder,
+        local_file    = local_file,
+        config        = config
       )
-
-      downloaded_file <- normalizePath(file.path(local_folder, local_file))
-
-      if (file.exists(downloaded_file)) {
-        TRUE
-      } else {
-        print("File does not exist in S3.")
-        FALSE
-      }
-    }, error = function(e) {
-      if (grepl("404", e$message, fixed = TRUE) || grepl("Not Found", e$message, ignore.case = TRUE)) {
-        message("Error: run config file not found in s3 (404).")
-        return(FALSE)
-      } else {
-        stop(paste("Error:", e$message))
-      }
-    })
-
-    # restart_exists <- suppressMessages(aws.s3::object_exists(object = file.path(stringr::str_split_fixed(config$s3$restart$bucket, "/", n = 2)[2],
-    #                                                                             config$location$site_id, sim_name, configure_run_file),
-    #                                                          bucket = stringr::str_split_fixed(config$s3$restart$bucket, "/", n = 2)[1],
-    #                                                          region = stringr::str_split_fixed(config$s3$restart$endpoint, pattern = "\\.", n = 2)[1],
-    #                                                          base_url = stringr::str_split_fixed(config$s3$restart$endpoint, pattern = "\\.", n = 2)[2],
-    #                                                          use_https = as.logical(Sys.getenv("USE_HTTPS"))))
-
-    if(restart_exists){
-
-      # aws.s3::save_object(object = file.path(stringr::str_split_fixed(config$s3$restart$bucket, "/", n = 2)[2], config$location$site_id, sim_name, configure_run_file),
-      #                     bucket = stringr::str_split_fixed(config$s3$restart$bucket, "/", n = 2)[1],
-      #                     file = file.path(lake_directory, "restart", config$location$site_id, sim_name, configure_run_file),
-      #                     region = stringr::str_split_fixed(config$s3$restart$endpoint, pattern = "\\.", n = 2)[1],
-      #                     base_url = stringr::str_split_fixed(config$s3$restart$endpoint, pattern = "\\.", n = 2)[2],
-      #                     use_https = as.logical(Sys.getenv("USE_HTTPS")))
-    }else{
-      yaml::write_yaml(run_config, file.path(lake_directory,"restart", config$location$site_id, sim_name, configure_run_file))
+    } else {
+      message("run config not found at s3://", server_name, "/", remote_folder, "/", remote_file, " - clean start")
+      yaml::write_yaml(run_config, file.path(lake_directory, "restart", config$location$site_id, sim_name, configure_run_file))
     }
   }
   run_config <- yaml::read_yaml(file.path(lake_directory, "restart", config$location$site_id, sim_name, configure_run_file))
