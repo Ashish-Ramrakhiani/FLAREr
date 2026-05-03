@@ -39,7 +39,7 @@ get_run_config <- function(configure_run_file = "configure_run.yml", lake_direct
     local_file <- configure_run_file
 
     files <- unlist(flare_get_folder_list(server_name = server_name, prefix = remote_folder, config = config))
-    restart_exists <- any(basename(files) == remote_file)
+    restart_exists <- length(files) > 0 && any(basename(files) == remote_file)
 
     if (restart_exists) {
       flare_get_file(
