@@ -373,6 +373,10 @@ update_run_config <- function(lake_directory,
   run_config$configure_flare <- configure_flare
   run_config$configure_obs <- configure_obs
   run_config$use_s3 <- use_s3
+  # use_faasr is not a parameter of this function but governs flare_io_mode()
+  # dispatch downstream, so it must round-trip through the rewritten YAML or
+  # the next set_up_simulation will silently fall back to mode="s3".
+  run_config$use_faasr <- config$run_config$use_faasr
 
   file_name <- file.path(lake_directory,"restart",site_id, sim_name, configure_run_file)
   yaml::write_yaml(run_config, file_name)
