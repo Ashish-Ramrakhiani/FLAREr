@@ -44,7 +44,6 @@ create_met_files <- function(config, lake_directory, met_forecast_start_datetime
       stop("Only forecasts that start at 00:00:00 UTC are currently supported")
     }
 
-    # Validation preserved from prior if/else
     if(config$met$future_met_use_s3 && (is.null(bucket) || is.null(endpoint))){
       stop("met forecast function needs bucket and endpoint if future_met_use_s3=TRUE")
     }

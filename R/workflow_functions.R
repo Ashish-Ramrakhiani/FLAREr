@@ -14,17 +14,16 @@
 
 get_run_config <- function(configure_run_file = "configure_run.yml", lake_directory, config, clean_start = FALSE, config_set_name = "default", sim_name = NA){
 
-  # Category 3a: unified local + remote logic via list-then-get.
-  # flare_get_folder_list with local_path enumerates the local restart
-  # folder when mode=local; lists S3 when mode=s3/faasr. flare_get_file
-  # in mode=local is a no-op (file is already at local_folder when the
-  # local listing claimed it exists). Behavior matches the team's prior
-  # explicit local-vs-S3 branches:
-  #   - clean_start=TRUE             -> always write fresh from FCRE config
-  #   - mode=local, file present     -> no-op, read it back
-  #   - mode=local, file absent      -> write fresh
-  #   - mode=remote, file present    -> download, read it back
-  #   - mode=remote, file absent     -> write fresh
+  # List-then-get keeps the local and remote paths uniform:
+  # flare_get_folder_list enumerates the local restart folder when
+  # mode=local and lists S3 otherwise; flare_get_file is a no-op in
+  # mode=local since the file is already at local_folder when the
+  # listing reports it.
+  #   clean_start=TRUE          -> always rewrite from configuration/
+  #   mode=local, file present  -> read back
+  #   mode=local, file absent   -> write fresh
+  #   mode=remote, file present -> download, read back
+  #   mode=remote, file absent  -> write fresh
 
   run_config <- yaml::read_yaml(file.path(lake_directory,"configuration", config_set_name, configure_run_file))
 
@@ -102,10 +101,9 @@ get_git_repo <- function(lake_directory, directory, git_repo){
 #'
 put_targets <- function(site_id, cleaned_insitu_file = NA, cleaned_met_file = NA, cleaned_inflow_file = NA, use_s3 = FALSE, config=NULL){
 
-  # `use_s3` parameter is retained for API compatibility but no longer
-  # gates the calls below. flare_put_file dispatches via flare_io_mode():
-  # mode=s3/faasr uploads remotely; mode=local is a no-op (preserving the
-  # team's prior `if (use_s3)` gating behavior).
+  # `use_s3` is unused: dispatch is driven by flare_io_mode() inside
+  # flare_put_file (mode=s3/faasr uploads, mode=local is a no-op).
+  # Argument retained for signature stability with downstream callers.
 
     if(!is.na(cleaned_insitu_file)){
 

@@ -51,11 +51,6 @@ create_flow_files <- function(flow_forecast_dir = NULL,
 
   round_level <- 10
 
-  # set locations of flow drivers (s3 or local) — single dispatching call
-  # via flare_arrow_s3_bucket; mode=local uses the explicit local_path
-  # (Design 2) so file paths match the team's prior inline conventions.
-
-  # Validation: pre-existing requirements preserved.
   if (use_s3 && (is.null(bucket) || is.null(endpoint))) {
     stop("create_flow_files needs bucket and endpoint if use_s3=TRUE")
   }
@@ -64,20 +59,18 @@ create_flow_files <- function(flow_forecast_dir = NULL,
     stop("create_flow_files needs local_directory if use_s3=FALSE")
   }
 
-  # Setup arrow env vars once for the whole block (matches prior behavior
-  # where these were set inside each `if(use_s3)` branch).
   vars <- arrow_env_vars()
   on.exit(unset_arrow_vars(vars), add = TRUE)
 
-  # bucket_tail only used to build faasr_prefix in S3-bound modes;
-  # safe to compute as "" when bucket is NULL (mode=local will use
-  # local_path instead and ignore faasr_prefix).
+  # bucket_tail only contributes to faasr_prefix on S3-bound dispatch;
+  # it is safe to leave empty when bucket is NULL because mode=local
+  # uses local_path and ignores the prefix.
   bucket_tail <- if (!is.null(bucket)) stringr::str_split_fixed(bucket, "/", n = 2)[2] else ""
 
-  # `use_s3` is the per-driver toggle (e.g. config$flows$use_flows_s3),
-  # NOT the global config$run_config$use_s3. We pass it as mode_override
-  # so flare_arrow_s3_bucket honors the per-driver intent regardless of
-  # whether global config writes outputs to S3 / FaaSr.
+  # `use_s3` here is the per-driver flow toggle (e.g.
+  # config$flows$use_flows_s3), distinct from the global
+  # config$run_config$use_s3. Forwarding it as mode_override lets a
+  # single driver be local while global outputs still go to S3 / FaaSr.
   driver_mode <- if (use_s3) NULL else "local"
 
   future_s3 <- if (!is.null(flow_forecast_dir)) {

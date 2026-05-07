@@ -1,11 +1,10 @@
 #' Validate FaaSr / S3 / local-mode configuration at setup time.
 #'
-#' Replaces the old `.faasr` global construction. Under the
-#' `flare_io.R` dispatch design no global is required: the wrappers
-#' read directly from `config$s3` and `config$run_config`. This
-#' function exists to fail fast if the configuration is internally
-#' inconsistent, and to surface a warning early when AWS credentials
-#' are missing under `mode="s3"`.
+#' The `flare_io.R` wrappers read `config$s3` and `config$run_config`
+#' directly, so no global state needs initializing. This function
+#' exists to fail fast on internally inconsistent configurations and to
+#' surface a warning early when AWS credentials are missing under
+#' `mode="s3"`.
 #'
 #' @param config FLAREr config list with `run_config$use_s3` and
 #'   optionally `run_config$use_faasr`.

@@ -17,12 +17,8 @@ write_forecast <- function(da_forecast_output,
                                  endpoint = NULL,
                                  local_directory = NULL,config = NULL){
 
-  # Single dispatching call. flare_arrow_s3_bucket handles the
-  # mode=s3/faasr arrow::s3_bucket(...) path AND the mode=local
-  # SubTreeFileSystem path via the local_path argument (Design 2).
-  # Behavior preserved across all modes: S3 callers get the same
-  # bucket-rooted handle; local callers get the same local-directory
-  # handle the prior `if/else` produced.
+  # flare_arrow_s3_bucket dispatches arrow::s3_bucket() for s3/faasr
+  # modes and a SubTreeFileSystem rooted at local_directory for local.
   if(use_s3 && (is.null(bucket) || is.null(endpoint))){
     stop("write_forecast needs bucket and endpoint if use_s3=TRUE")
   }

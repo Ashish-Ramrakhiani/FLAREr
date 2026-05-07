@@ -3,10 +3,10 @@
 #' Resolve the I/O backend for a FLARE run from `config$run_config`.
 #'
 #' Returns one of `"faasr"`, `"s3"`, `"local"`. Errors if
-#' `use_faasr=TRUE` while `use_s3=FALSE` (FaaSr mode is always
-#' cloud-backed). Falls back to `"s3"` with a warning when
+#' `use_faasr=TRUE` while `use_s3=FALSE`; FaaSr mode is always
+#' cloud-backed. Falls back to `"s3"` with a warning when
 #' `use_faasr=TRUE` but the FaaSr RPC stubs are not loaded into
-#' `globalenv()` (i.e. not running inside a FaaSr container).
+#' `globalenv()`, i.e. when not running inside a FaaSr container.
 #'
 #' @param config FLAREr config list (must contain `run_config$use_s3`
 #'   and optionally `run_config$use_faasr`).
@@ -32,21 +32,18 @@ flare_io_mode <- function(config) {
 }
 
 # Resolve a faasr_* RPC stub from globalenv at call time. The stubs are
-# source()'d into globalenv by FaaSr_py's r_user_func_entry.R when the
-# action runs inside a container; they don't exist at package-load time.
+# source()'d into globalenv by the FaaSr executor on action startup, so
+# they don't exist at package-load time.
 .flare_faasr <- function(name) {
   get(name, envir = globalenv(), mode = "function")
 }
 
-# Helpers used only by mode="s3" bodies; lifted verbatim from
-# upstream/main FLAREr's pre-FaaSr aws.s3 calls in workflow_functions.R.
 .flare_split_bucket   <- function(s) stringr::str_split_fixed(s, "/", n = 2)
 .flare_split_endpoint <- function(s) stringr::str_split_fixed(s, "\\.", n = 2)
 
-# Lake-directory root used as the "object store" in mode="local". Prefer
-# an explicit field if a caller has set it; otherwise derive from the
-# qaqc_data_directory layout (set_up_simulation.R sets it as
-# <lake_directory>/targets/<site_id>).
+# Filesystem root used as the object store in mode="local". Honor an
+# explicit lake_directory if set; otherwise derive from the
+# qaqc_data_directory layout (<lake_directory>/targets/<site_id>).
 .flare_local_root <- function(config) {
   lake_dir <- config$file_path$lake_directory
   if (!is.null(lake_dir)) return(lake_dir)
@@ -130,10 +127,8 @@ flare_get_file <- function(local_file, remote_file,
     return(invisible(TRUE))
   }
 
-  # mode == "local"
-  # No-op (Reading A): preserves the team's pre-existing convention
-  # where pure-local mode skips the "remote put" step entirely; data
-  # is assumed to already be at its working-directory location.
+  # mode == "local": files are already at their working-directory
+  # location, so the remote-fetch step is a no-op.
   invisible(TRUE)
 }
 
@@ -173,10 +168,8 @@ flare_put_file <- function(local_file, remote_file,
     return(invisible(TRUE))
   }
 
-  # mode == "local"
-  # No-op (Reading A): preserves the team's pre-existing convention
-  # where pure-local mode skips remote uploads. The data is already
-  # at its working-directory location; no rehoming needed.
+  # mode == "local": data is already at its working-directory
+  # location; no upload needed.
   invisible(TRUE)
 }
 
@@ -216,9 +209,7 @@ flare_delete_file <- function(remote_file,
     return(invisible(TRUE))
   }
 
-  # mode == "local"
-  # No-op (Reading A): preserves the team's pre-existing convention
-  # where pure-local mode skips remote deletes.
+  # mode == "local": no remote object exists to delete.
   invisible(TRUE)
 }
 
@@ -229,12 +220,11 @@ flare_delete_file <- function(remote_file,
 #' @param local_path Optional local filesystem directory to enumerate
 #'   when `mode="local"`. When supplied AND mode resolves to "local",
 #'   returns `list.files(local_path, recursive=TRUE, full.names=FALSE)`.
-#'   When NULL (default) AND mode="local", returns `character(0)` —
-#'   preserves the team's prior convention where remote-list callers
-#'   no-op in pure-local mode (their iteration loops execute zero
-#'   times). New callers that need to do an existence check that
-#'   works in BOTH local and remote modes (e.g. get_run_config) supply
-#'   `local_path` so the local enumeration is meaningful.
+#'   When NULL (default) AND mode="local", returns `character(0)`, so
+#'   remote-list callers iterate zero times in pure-local mode. Callers
+#'   that need an existence check that works under BOTH local and remote
+#'   modes (e.g. `get_run_config()`) should pass `local_path` so the
+#'   local enumeration is meaningful.
 #' @param config FLAREr config list.
 #' @return Character vector of object keys / relative file paths.
 #' @export
@@ -266,11 +256,8 @@ flare_get_folder_list <- function(server_name = "",
     return(keys[!grepl("/$", keys)])
   }
 
-  # mode == "local"
-  # If caller supplied an explicit local_path, enumerate that directory.
-  # Otherwise empty result (Reading A no-op default), so existing
-  # remote-list callers keep their "iterate zero times in local mode"
-  # behavior unchanged.
+  # mode == "local": enumerate the supplied directory if given;
+  # otherwise return empty so remote-list callers iterate zero times.
   if (!is.null(local_path) && dir.exists(local_path)) {
     return(list.files(local_path, recursive = TRUE, full.names = FALSE))
   }
@@ -294,11 +281,11 @@ flare_get_folder_list <- function(server_name = "",
 #'   `mode="s3"`/`"faasr"`. If NULL in `mode="local"`, falls back to
 #'   `<.flare_local_root(config)>/<server_name>/<faasr_prefix>`.
 #' @param mode_override Optional explicit mode (`"local"`, `"s3"`, or
-#'   `"faasr"`) that bypasses `flare_io_mode(config)`. Useful when a
+#'   `"faasr"`) that bypasses `flare_io_mode(config)`. Used when a
 #'   per-driver YAML toggle (e.g. `config$met$future_met_use_s3`,
-#'   `config$flows$use_flows_s3`) makes a SPECIFIC driver local even
-#'   though the global config writes outputs to S3. NULL (default) =
-#'   use config-driven dispatch.
+#'   `config$flows$use_flows_s3`) makes a specific driver local while
+#'   global outputs still go to S3. NULL (default) uses config-driven
+#'   dispatch.
 #' @param config FLAREr config list.
 #' @return An `arrow::s3_bucket()` handle (modes `s3`/`faasr`) or
 #'   `arrow::SubTreeFileSystem` (mode `local`).
@@ -336,11 +323,9 @@ flare_arrow_s3_bucket <- function(server_name   = "",
     ))
   }
 
-  # mode == "local"
-  # If caller supplied an explicit local_path (Design 2), use it
-  # verbatim — this lets caller-specific YAML path conventions
-  # (e.g. config$met$future_met_model) be honored byte-for-byte.
-  # Otherwise fall back to the generic <root>/<server>/<prefix> layout.
+  # mode == "local": honor an explicit local_path so caller-specific
+  # path conventions (e.g. config$met$future_met_model) carry through;
+  # otherwise fall back to the generic <root>/<server>/<prefix> layout.
   if (!is.null(local_path)) {
     return(arrow::SubTreeFileSystem$create(local_path))
   }
